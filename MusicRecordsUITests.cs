@@ -217,6 +217,85 @@ public class MusicRecordsUITests : IDisposable
         Assert.Equal(string.Empty, _driver.FindElement(By.Id("artistFilter")).GetAttribute("value"));
     }
 
+    [Fact]
+    public void Login_WithValidCredentials_DisplaysUsernameAndRole()
+    {
+        OpenRecordsPage();
+
+        var username = GetRequiredSetting("MUSIC_RECORDS_TEST_USERNAME");
+        var password = GetRequiredSetting("MUSIC_RECORDS_TEST_PASSWORD");
+
+        LoginWith(username, password);
+
+        Assert.Equal(username, _driver.FindElement(By.Id("currentUsername")).Text);
+
+        var role = _driver.FindElement(By.Id("currentRole")).Text;
+        Assert.False(string.IsNullOrWhiteSpace(role));
+
+        var expectedRole = Environment.GetEnvironmentVariable("MUSIC_RECORDS_TEST_ROLE");
+        if (!string.IsNullOrWhiteSpace(expectedRole))
+        {
+            Assert.Equal(expectedRole, role);
+        }
+    }
+
+    [Fact]
+    public void Login_WithIncorrectPassword_DisplaysErrorMessage()
+    {
+        OpenRecordsPage();
+
+        _driver.FindElement(By.Id("username"))
+            .SendKeys(GetRequiredSetting("MUSIC_RECORDS_TEST_USERNAME"));
+        _driver.FindElement(By.Id("password"))
+            .SendKeys("invalid-password-for-ui-test");
+        _driver.FindElement(By.Id("loginButton")).Click();
+
+        var error = _wait.Until(driver =>
+        {
+            var element = driver.FindElements(By.Id("loginError")).SingleOrDefault();
+            return element is { Displayed: true } ? element : null;
+        });
+
+        Assert.NotNull(error);
+        Assert.Contains("Forkert brugernavn eller adgangskode.", error!.Text);
+        Assert.True(_driver.FindElement(By.Id("loginButton")).Displayed);
+    }
+
+    [Fact]
+    public void Logout_ClearsLoginStatus_AndKeepsRecordsVisible()
+    {
+        OpenRecordsPage();
+
+        LoginWith(
+            GetRequiredSetting("MUSIC_RECORDS_TEST_USERNAME"),
+            GetRequiredSetting("MUSIC_RECORDS_TEST_PASSWORD"));
+
+        _driver.FindElement(By.Id("logoutButton")).Click();
+
+        _wait.Until(driver =>
+            driver.FindElements(By.Id("loginStatus")).Count == 0
+            && driver.FindElements(By.Id("loginButton")).Any(element => element.Displayed));
+
+        AssertRecords(AllTitles);
+    }
+
+    private void LoginWith(string username, string password)
+    {
+        _driver.FindElement(By.Id("username")).SendKeys(username);
+        _driver.FindElement(By.Id("password")).SendKeys(password);
+        _driver.FindElement(By.Id("loginButton")).Click();
+
+        _wait.Until(driver =>
+            driver.FindElements(By.Id("loginStatus")).Any(element => element.Displayed));
+    }
+
+    private static string GetRequiredSetting(string name)
+    {
+        return Environment.GetEnvironmentVariable(name)
+            ?? throw new InvalidOperationException(
+                $"Angiv miljøvariablen {name} lokalt, før Selenium-testene køres.");
+    }
+
     public void Dispose()
     {
         try
